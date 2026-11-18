@@ -1,0 +1,27 @@
+{
+  "name": "@philippwilke/env-check",
+  "version": "0.0.0-development",
+  "description": "Checks that npm is mapped to and authenticated against the registry of private package scopes.",
+  "keywords": ["npm", "npmrc", "github-packages", "registry", "auth", "ci"],
+  "license": "MIT",
+  "author": "Philipp Wilke",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/philippwilke/dev-tooling.git",
+    "directory": "packages/env-check"
+  },
+  "homepage": "https://github.com/philippwilke/dev-tooling/tree/main/packages/env-check#readme",
+  "bugs": "https://github.com/philippwilke/dev-tooling/issues",
+  "type": "module",
+  "exports": "./src/index.js",
+  "bin": {
+    "pw-env-check": "bin/env-check.js"
+  },
+  "files": ["bin", "src", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}
