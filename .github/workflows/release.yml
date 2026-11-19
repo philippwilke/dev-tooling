@@ -1,37 +1,148 @@
-# Releases packages of this repository. Tag format: <package>@<version>, e.g. env-check@1.0.0.
-# This file name (release.yml) is the one to register as trusted publisher on npmjs.org.
+# Publishes one package of this repository to npmjs.org and GitHub Packages.
+#
+# Tag format: <package>@<version>, e.g. env-check@1.0.1; the package lives in
+# packages/<package>. npmjs.org accepts it through trusted publishing (OIDC,
+# with provenance): this file name, release.yml, is the one registered as
+# trusted publisher for each package. Renaming it breaks publishing.
 name: Release
 
 on:
   push:
     tags:
-      - 'env-check@[0-9]+.[0-9]+.[0-9]+*'
+      - '*@[0-9]+.[0-9]+.[0-9]+*'
 
 permissions: {}
 
 jobs:
-  version:
+  publish:
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.parse.outputs.version }}
-    steps:
-      - id: parse
-        env:
-          TAG: ${{ github.ref_name }}
-        run: echo "version=${TAG#*@}" >> "$GITHUB_OUTPUT"
-
-  env-check:
-    needs: version
     permissions:
       contents: read
       id-token: write
       packages: write
-    uses: ./.github/workflows/npm-release.yml
-    secrets:
-      # Only set for the very first publish of a new package; see README.
-      npm-token: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
-    with:
-      version: ${{ needs.version.outputs.version }}
-      package-directory: packages/env-check
-      publish-npmjs: true
-      publish-github: true
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Verify release trigger
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.triggering_actor || github.actor }}
+          OWNER: ${{ github.repository_owner }}
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [ "${ACTOR,,}" != "${OWNER,,}" ]; then
+            echo "::error::Only $OWNER may publish; this tag was pushed by $ACTOR."
+            exit 1
+          fi
+          status=$(gh api "repos/$REPOSITORY/compare/$SHA...$DEFAULT_BRANCH" --jq .status)
+          case "$status" in
+            identical|ahead) echo "$SHA is on $DEFAULT_BRANCH." ;;
+            *) echo "::error::$SHA is not on $DEFAULT_BRANCH (compare status: $status)."; exit 1 ;;
+          esac
+
+      - name: Read package and version from the tag
+        run: |
+          set -euo pipefail
+          package=${TAG%@*}
+          version=${TAG##*@}
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$version' is not a semver version."
+            exit 1
+          fi
+          if ! [[ "$package" =~ ^[a-z0-9-]+$ ]]; then
+            echo "::error::'$package' is not a package directory name."
+            exit 1
+          fi
+          # Prereleases must never become "latest", or ranges such as ^1.0.0 would resolve to them.
+          dist_tag=latest
+          if [[ "${version%%+*}" == *-* ]]; then dist_tag=next; fi
+          {
+            echo "PACKAGE_DIR=packages/$package"
+            echo "VERSION=$version"
+            echo "DIST_TAG=$dist_tag"
+          } >> "$GITHUB_ENV"
+
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - name: Install pinned npm
+        run: npm install --global npm@11.21.3
+
+      - name: Validate package and apply version
+        run: |
+          set -euo pipefail
+          if [ ! -f "$PACKAGE_DIR/package.json" ]; then
+            echo "::error::There is no package in $PACKAGE_DIR."
+            exit 1
+          fi
+          cd "$PACKAGE_DIR"
+          name=$(node -p "require('./package.json').name")
+          if [[ "$name" != "@${GITHUB_REPOSITORY_OWNER,,}/"* ]]; then
+            echo "::error::$name is not in the scope @${GITHUB_REPOSITORY_OWNER,,}."
+            exit 1
+          fi
+          if [ "$(node -p "Boolean(require('./package.json').publishConfig?.registry)")" = "true" ]; then
+            echo "::error::Remove publishConfig.registry from package.json; this workflow selects the registry."
+            exit 1
+          fi
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          echo "PACKAGE_NAME=$name" >> "$GITHUB_ENV"
+          echo "Publishing $name@$VERSION as '$DIST_TAG'."
+
+      - name: Install, build and test
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: |
+          if [ -f package-lock.json ]; then npm ci; fi
+          npm run build --if-present
+          npm test --if-present
+
+      - name: Publish to npmjs.org
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: |
+          set -euo pipefail
+          registry=https://registry.npmjs.org/
+          args=(--registry="$registry" "--@${GITHUB_REPOSITORY_OWNER,,}:registry=$registry")
+          if out=$(npm view "$PACKAGE_NAME@$VERSION" version "${args[@]}" 2>&1); then
+            if [ "$out" = "$VERSION" ]; then
+              echo "$PACKAGE_NAME@$VERSION is already on npmjs.org; skipping."
+              exit 0
+            fi
+          elif ! grep -q E404 <<<"$out"; then
+            echo "::error::Could not query npmjs.org: $out"
+            exit 1
+          fi
+          npm publish --access public --tag "$DIST_TAG" "${args[@]}"
+
+      - name: Publish to GitHub Packages
+        working-directory: ${{ env.PACKAGE_DIR }}
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          registry=https://npm.pkg.github.com/
+          npmrc=$(mktemp)
+          trap 'rm -f "$npmrc"' EXIT
+          echo "//npm.pkg.github.com/:_authToken=\${NODE_AUTH_TOKEN}" > "$npmrc"
+          export NPM_CONFIG_USERCONFIG="$npmrc"
+          args=(--registry="$registry" "--@${GITHUB_REPOSITORY_OWNER,,}:registry=$registry")
+          if out=$(npm view "$PACKAGE_NAME@$VERSION" version "${args[@]}" 2>&1); then
+            if [ "$out" = "$VERSION" ]; then
+              echo "$PACKAGE_NAME@$VERSION is already on GitHub Packages; skipping."
+              exit 0
+            fi
+          elif ! grep -q E404 <<<"$out"; then
+            echo "::error::Could not query GitHub Packages: $out"
+            exit 1
+          fi
+          npm publish --tag "$DIST_TAG" "${args[@]}"
