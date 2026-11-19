@@ -46,7 +46,10 @@ The workflow runs `npm ci` (if a lockfile exists), `npm run build` and `npm test
 
 ### Trusted publishing on npmjs.org
 
-npmjs.org accepts OIDC publishes only from a registered workflow, and a trusted publisher can only be registered for a package that already exists. The first version is therefore published with a short-lived bootstrap token, still through the pipeline:
+npmjs.org accepts OIDC publishes only from a registered workflow, and a trusted publisher can only be registered for a package that already exists. Publish the first version in one of two ways:
+
+- **Manually (preferred, no token involved):** in the package directory run `npm login`, `npm version <version> --no-git-tag-version` and `npm publish --access public`; discard the `package.json` change afterwards. Then push the release tag so the workflow publishes the same version to GitHub Packages (npmjs.org is skipped because the version exists), and continue with step 4.
+- **Through the pipeline with a short-lived bootstrap token:**
 
 1. On npmjs.com create a granular access token: read and write on the package's scope, shortest expiration, *Bypass 2FA* enabled (required for non-interactive publishing).
 2. Store it as the repository secret `NPM_BOOTSTRAP_TOKEN` and pass it to the workflow as `secrets: npm-token: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}`.
