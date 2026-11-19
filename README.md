@@ -40,6 +40,7 @@ jobs:
 | `publish-github` | `true` | Publish to GitHub Packages with the caller's `GITHUB_TOKEN`; the package scope must equal the repository owner |
 | `node-version` | `24` | Node.js version |
 | `npm-version` | `11.21.3` | npm CLI version (trusted publishing needs ≥ 11.5.1) |
+| `prerelease-dist-tag` | `next` | Dist-tag for prerelease versions such as `1.1.0-beta.1`; other versions are published as `latest`, so prereleases never satisfy ranges like `^1.0.0` by default |
 
 The workflow runs `npm ci` (if a lockfile exists), `npm run build` and `npm test` (if defined), then publishes. A version that already exists on a registry is skipped; any other registry error fails the run. Packages must not set `publishConfig.registry`, because the workflow selects the registry.
 

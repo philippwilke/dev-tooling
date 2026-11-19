@@ -32,6 +32,10 @@ on:
         description: npm CLI version; trusted publishing needs 11.5.1 or later.
         type: string
         default: '11.21.3'
+      prerelease-dist-tag:
+        description: Dist-tag for prerelease versions (e.g. 1.1.0-beta.1); releases always use "latest".
+        type: string
+        default: next
     secrets:
       npm-token:
         description: >-
@@ -72,6 +76,7 @@ jobs:
         env:
           OWNER: ${{ github.repository_owner }}
           PUBLISH_GITHUB: ${{ inputs.publish-github }}
+          PRERELEASE_DIST_TAG: ${{ inputs.prerelease-dist-tag }}
         run: |
           set -euo pipefail
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
@@ -90,10 +95,21 @@ jobs:
             exit 1
           fi
           npm version "$VERSION" --no-git-tag-version --allow-same-version
+          # Prereleases must never become "latest", or `@1` ranges would resolve to them.
+          dist_tag=latest
+          if [[ "${VERSION%%+*}" == *-* ]]; then
+            dist_tag="$PRERELEASE_DIST_TAG"
+            if [ -z "$dist_tag" ] || [ "$dist_tag" = "latest" ]; then
+              echo "::error::Prerelease $VERSION needs a dist-tag other than 'latest'."
+              exit 1
+            fi
+          fi
           {
             echo "PACKAGE_NAME=$name"
             echo "PACKAGE_SCOPE=$scope"
+            echo "DIST_TAG=$dist_tag"
           } >> "$GITHUB_ENV"
+          echo "Publishing $name@$VERSION with dist-tag '$dist_tag'."
 
       - name: Install dependencies
         run: |
@@ -130,7 +146,7 @@ jobs:
             echo "::error::Could not query npmjs.org: $out"
             exit 1
           fi
-          npm publish --access public "${args[@]}"
+          npm publish --access public --tag "$DIST_TAG" "${args[@]}"
 
       - name: Publish to GitHub Packages
         if: inputs.publish-github
@@ -152,4 +168,4 @@ jobs:
             echo "::error::Could not query GitHub Packages: $out"
             exit 1
           fi
-          npm publish "${args[@]}"
+          npm publish --tag "$DIST_TAG" "${args[@]}"
