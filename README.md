@@ -6,6 +6,7 @@ Shared development tooling for Philipp Wilke's projects: small CLIs and reusable
 |---|---|
 | [`packages/env-check`](packages/env-check) | `@philippwilke/env-check` — checks that npm is mapped to and authenticated against the registry of private scopes |
 | [`.github/workflows/npm-release.yml`](.github/workflows/npm-release.yml) | Reusable workflow: build, test and publish an npm package to npmjs.org and/or GitHub Packages |
+| [`rulesets/release-tags.json`](rulesets/release-tags.json) | Ruleset that lets only repository admins create, move or delete tags |
 
 ## Reusable npm release workflow
 
@@ -41,8 +42,12 @@ jobs:
 | `node-version` | `24` | Node.js version |
 | `npm-version` | `11.21.3` | npm CLI version (trusted publishing needs ≥ 11.5.1) |
 | `prerelease-dist-tag` | `next` | Dist-tag for prerelease versions such as `1.1.0-beta.1`; other versions are published as `latest`, so prereleases never satisfy ranges like `^1.0.0` by default |
+| `allowed-actors` | owner | Comma-separated logins allowed to trigger a release; empty means the repository owner only |
+| `require-default-branch` | `true` | Refuse to publish a commit that is not contained in the default branch |
 
-The workflow runs `npm ci` (if a lockfile exists), `npm run build` and `npm test` (if defined), then publishes. A version that already exists on a registry is skipped; any other registry error fails the run. Packages must not set `publishConfig.registry`, because the workflow selects the registry.
+Before anything else the workflow checks who triggered the release and that the commit is on the default branch, so a tag pushed by automation or on a stray branch publishes nothing. These guards live in the caller's repository and catch mistakes; protecting the tags themselves is the job of a ruleset (below).
+
+The workflow then runs `npm ci` (if a lockfile exists), `npm run build` and `npm test` (if defined), then publishes. A version that already exists on a registry is skipped; any other registry error fails the run. Packages must not set `publishConfig.registry`, because the workflow selects the registry.
 
 ### Trusted publishing on npmjs.org
 
@@ -60,10 +65,17 @@ npmjs.org accepts OIDC publishes only from a registered workflow, and a trusted 
 
 From then on the workflow publishes via OIDC; an unset `npm-token` is ignored.
 
-### Recommended repository settings
+### Protecting release tags
 
-- A tag ruleset restricting who may create release tags, since a tag push publishes.
-- Dependabot (see [`.github/dependabot.yml`](.github/dependabot.yml)) keeps the SHA-pinned actions current.
+A tag push publishes, so only repository admins should be able to create, move or delete tags. [`rulesets/release-tags.json`](rulesets/release-tags.json) defines that as a reusable ruleset (all tags; creation, update and deletion restricted; admins bypass). Apply it once per repository, either with *Settings → Rules → Rulesets → New ruleset → Import a ruleset*, or:
+
+```bash
+gh api -X POST repos/<owner>/<repo>/rulesets --input rulesets/release-tags.json
+```
+
+Rulesets need a public repository or GitHub Pro for private ones. Without them, the workflow's actor and branch checks still apply.
+
+Dependabot (see [`.github/dependabot.yml`](.github/dependabot.yml)) keeps the SHA-pinned actions current.
 
 ## Releasing this repository's packages
 

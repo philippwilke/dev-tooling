@@ -36,6 +36,15 @@ on:
         description: Dist-tag for prerelease versions (e.g. 1.1.0-beta.1); releases always use "latest".
         type: string
         default: next
+      allowed-actors:
+        description: >-
+          Comma-separated GitHub logins allowed to trigger a release. Empty means the repository owner only.
+        type: string
+        default: ''
+      require-default-branch:
+        description: Refuse to publish a commit that is not contained in the default branch.
+        type: boolean
+        default: true
     secrets:
       npm-token:
         description: >-
@@ -57,6 +66,35 @@ jobs:
     env:
       VERSION: ${{ inputs.version }}
     steps:
+      - name: Verify release trigger
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.triggering_actor || github.actor }}
+          OWNER: ${{ github.repository_owner }}
+          ALLOWED: ${{ inputs.allowed-actors }}
+          REQUIRE_DEFAULT_BRANCH: ${{ inputs.require-default-branch }}
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          allowed="${ALLOWED:-$OWNER}"
+          if ! tr ',' '\n' <<<"$allowed" | sed 's/^ *//;s/ *$//' | grep -qixF -- "$ACTOR"; then
+            echo "::error::$ACTOR may not trigger releases (allowed: $allowed)."
+            exit 1
+          fi
+          if [ "$REQUIRE_DEFAULT_BRANCH" = "true" ]; then
+            if [ -z "$DEFAULT_BRANCH" ]; then
+              DEFAULT_BRANCH=$(gh api "repos/$REPOSITORY" --jq .default_branch)
+            fi
+            status=$(gh api "repos/$REPOSITORY/compare/$SHA...$DEFAULT_BRANCH" --jq .status)
+            case "$status" in
+              identical|ahead) echo "$SHA is contained in $DEFAULT_BRANCH." ;;
+              *) echo "::error::$SHA is not contained in $DEFAULT_BRANCH (compare status: $status)."; exit 1 ;;
+            esac
+          fi
+
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
