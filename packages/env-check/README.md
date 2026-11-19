@@ -47,10 +47,10 @@ Exit codes: `0` all checks passed, `1` a check failed, `2` usage error.
 ```ini
 # .npmrc in the project (commit this)
 @philippwilke:registry=https://npm.pkg.github.com/
-//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+//npm.pkg.github.com/:_authToken=${GITHUB_PACKAGES_READ_TOKEN}
 ```
 
-Locally, export `NODE_AUTH_TOKEN` with a GitHub token that has `read:packages`. In GitHub Actions, set it from `secrets.GITHUB_TOKEN` and grant the repository read access in the package settings.
+Locally, export `GITHUB_PACKAGES_READ_TOKEN` with a GitHub token that has `read:packages`. In GitHub Actions, set it from `secrets.GITHUB_TOKEN` and grant the repository read access in the package settings.
 
 ## License
 
