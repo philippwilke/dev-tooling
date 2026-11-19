@@ -85,9 +85,9 @@ describe('checkScope', () => {
 
   it('names empty environment variables referenced in .npmrc', async () => {
     const whoami = { code: 1, stdout: '', stderr: 'npm error code ENEEDAUTH' };
-    const findToken = async () => ({ found: false, missingVariables: ['NODE_AUTH_TOKEN'] });
+    const findToken = async () => ({ found: false, missingVariables: ['GITHUB_PACKAGES_READ_TOKEN'] });
     const result = await checkScope({ ...base, runNpm: fakeNpm({ whoami }), findToken });
-    assert.match(result.errors[0], /NODE_AUTH_TOKEN/);
+    assert.match(result.errors[0], /GITHUB_PACKAGES_READ_TOKEN/);
   });
 
   it('falls back to the offline check on network errors', async () => {

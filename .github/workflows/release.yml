@@ -127,13 +127,13 @@ jobs:
       - name: Publish to GitHub Packages
         working-directory: ${{ env.PACKAGE_DIR }}
         env:
-          NODE_AUTH_TOKEN: ${{ github.token }}
+          GITHUB_PACKAGES_WRITE_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           registry=https://npm.pkg.github.com/
           npmrc=$(mktemp)
           trap 'rm -f "$npmrc"' EXIT
-          echo "//npm.pkg.github.com/:_authToken=\${NODE_AUTH_TOKEN}" > "$npmrc"
+          echo "//npm.pkg.github.com/:_authToken=\${GITHUB_PACKAGES_WRITE_TOKEN}" > "$npmrc"
           export NPM_CONFIG_USERCONFIG="$npmrc"
           args=(--registry="$registry" "--@${GITHUB_REPOSITORY_OWNER,,}:registry=$registry")
           if out=$(npm view "$PACKAGE_NAME@$VERSION" version "${args[@]}" 2>&1); then

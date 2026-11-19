@@ -180,7 +180,7 @@ export async function checkScope({ scope, expectedRegistry, offline, runNpm, fin
     } else if (token.missingVariables?.length) {
       result.errors.push(`${scope}: not authenticated. Environment variable(s) referenced in .npmrc are empty: ${token.missingVariables.join(', ')}.`);
     } else {
-      result.errors.push(`${scope}: not authenticated against ${expectedRegistry}. Configure a token, e.g.\n    //${new URL(expectedRegistry).host}/:_authToken=\${NODE_AUTH_TOKEN}`);
+      result.errors.push(`${scope}: not authenticated against ${expectedRegistry}. Configure a token, e.g.\n    //${new URL(expectedRegistry).host}/:_authToken=\${GITHUB_PACKAGES_READ_TOKEN}`);
     }
     return result;
   }
@@ -219,7 +219,7 @@ export async function main(argv, { cwd = process.cwd(), env = process.env, log =
     failed ||= !result.ok;
   }
   if (failed && (env.CI || env.GITHUB_ACTIONS)) {
-    logError('In CI, write the token from a secret into .npmrc before installing, e.g. via actions/setup-node with registry-url and NODE_AUTH_TOKEN.');
+    logError('In CI, reference the token in .npmrc and set it from a secret, e.g. GITHUB_PACKAGES_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}.');
   }
   return failed ? 1 : 0;
 }
