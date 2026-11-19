@@ -32,6 +32,12 @@ on:
         description: npm CLI version; trusted publishing needs 11.5.1 or later.
         type: string
         default: '11.21.3'
+    secrets:
+      npm-token:
+        description: >-
+          Bootstrap only. Granular npm token used for the FIRST npmjs.org publish of a new
+          package, before a trusted publisher can be registered. Leave unset afterwards.
+        required: false
 
 jobs:
   publish:
@@ -100,11 +106,21 @@ jobs:
 
       - name: Publish to npmjs.org
         if: inputs.publish-npmjs
+        env:
+          NPM_BOOTSTRAP_TOKEN: ${{ secrets.npm-token }}
         run: |
           set -euo pipefail
           registry=https://registry.npmjs.org/
           args=(--registry="$registry")
           [ -n "$PACKAGE_SCOPE" ] && args+=("--${PACKAGE_SCOPE}:registry=$registry")
+          if [ -n "$NPM_BOOTSTRAP_TOKEN" ]; then
+            # Token publish: provenance must be requested explicitly (OIDC adds it automatically).
+            echo "::warning::Publishing with a bootstrap token. Register a trusted publisher and delete the token afterwards."
+            npmrc=$(mktemp)
+            echo "//registry.npmjs.org/:_authToken=\${NPM_BOOTSTRAP_TOKEN}" > "$npmrc"
+            export NPM_CONFIG_USERCONFIG="$npmrc"
+            args+=(--provenance)
+          fi
           if out=$(npm view "$PACKAGE_NAME@$VERSION" version "${args[@]}" 2>&1); then
             if [ "$out" = "$VERSION" ]; then
               echo "$PACKAGE_NAME@$VERSION already exists on npmjs.org; skipping."

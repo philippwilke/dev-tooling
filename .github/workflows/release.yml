@@ -27,6 +27,9 @@ jobs:
       id-token: write
       packages: write
     uses: ./.github/workflows/npm-release.yml
+    secrets:
+      # Only set for the very first publish of a new package; see README.
+      npm-token: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
     with:
       version: ${{ needs.version.outputs.version }}
       package-directory: packages/env-check
